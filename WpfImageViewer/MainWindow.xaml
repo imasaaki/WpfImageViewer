@@ -34,11 +34,14 @@
             </Grid.ColumnDefinitions>
             <Grid x:Name="Grid_ImageDisplay" Grid.Column="1">
             </Grid>
-            <Canvas Grid.Column="1">
-                <Rectangle Width="100" Height="100" Fill="#66FFFF55"></Rectangle>
-               
-            </Canvas>
-            
+            <Viewbox x:Name="ViewBox_ImageDisplay" Grid.Column="1" Stretch="Fill">
+                <Canvas Width="200" Height="200">
+                    <Rectangle Width="100" Height="100" Fill="#66FFFF55"></Rectangle>
+                </Canvas>
+            </Viewbox>
         </Grid>
+        <StackPanel Orientation="Horizontal" Grid.Row="2">
+            <Label Name="Label_Page" Content="****/****" Margin="10 1 0 1" Width="50"/>
+        </StackPanel>
     </Grid>
 </Window>

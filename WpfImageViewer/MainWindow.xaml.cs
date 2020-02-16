@@ -22,11 +22,11 @@ namespace WpfImageViewer
     public partial class MainWindow : Window
     {
         private const int MaxImageNum = 9;
-        private const int MaxImageWidth = 1920;
-        private const int MaxImageHeight = 1080;
         private List<Image> imageList = new List<Image>();
 
         private List<BitmapImage> bitmapImageList = new List<BitmapImage>();
+
+        private List<byte[]> pngImageList = new List<byte[]>();
 
         private enum LayoutType { 
             L1x1,
@@ -34,9 +34,24 @@ namespace WpfImageViewer
             L3x3,
         }
 
+        private static readonly IReadOnlyDictionary<LayoutType, int> LayoutImageCountMap = new Dictionary<LayoutType, int>()
+        {
+            { LayoutType.L1x1, 1},
+            { LayoutType.L2x2, 4},
+            { LayoutType.L3x3, 9},
+        };
+
+        private static readonly IReadOnlyDictionary<LayoutType, int> LayoutImageWidthMap = new Dictionary<LayoutType, int>()
+        {
+            { LayoutType.L1x1, 1},
+            { LayoutType.L2x2, 2},
+            { LayoutType.L3x3, 3},
+        };
+
         private LayoutType currentLayoutType = LayoutType.L1x1;
         private int currentSelectedImageIndex = 0;
         private int currentPage = 0;
+        private int totalPage = 0;
 
         public MainWindow()
         {
@@ -97,6 +112,8 @@ namespace WpfImageViewer
                     this.imageList[i].Source = this.bitmapImageList[i];
                 }
             }
+
+            this.ClearPage();
         }
 
         private void TextBlock_rootPath_PreviewDragOver(object sender, DragEventArgs e)
@@ -129,16 +146,52 @@ namespace WpfImageViewer
             await Task.Run(()=> this.ReadAllImages(path));
 
             this.Window_App.IsEnabled = true;
+            this.ClearPage();
         }
 
         private void ReadAllImages(string path)
         {
+            if (Directory.Exists(path) == false)
+            {
+                return;
+            }
+
+            this.pngImageList.Clear();
+
             var filePathList = Directory.GetFiles(path, "*", SearchOption.AllDirectories);
-            filePathList = filePathList.Where(x => (x.EndsWith("jpg") || x.EndsWith("png"))).ToArray();
+            filePathList = filePathList.Where(x => (x.EndsWith("jpg") || x.EndsWith("png") || x.EndsWith("JPG") || x.EndsWith("PNG"))).ToArray();
 
             foreach (var filePath in filePathList)
             {
-                this.Dispatcher.Invoke(()=> this.bitmapImageList.Add(new BitmapImage(new Uri(filePath))));
+                var bitmapImage = new BitmapImage(new Uri(filePath));
+
+                BitmapEncoder encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmapImage));
+
+                using (var stream = new MemoryStream())
+                {
+                    encoder.Save(stream);
+                    this.pngImageList.Add(stream.ToArray());
+                }
+
+                //using (var stream = File.OpenRead(filePath))
+                //{
+                //    this.Dispatcher.Invoke(() =>
+                //    {
+                //        var buffer = new byte[stream.Length];
+                //        stream.Read(buffer, 0, buffer.Length);
+
+
+                //        var bitmap = new BitmapImage();
+                //        bitmap.BeginInit();
+                //        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                //        bitmap.StreamSource = stream;
+                //        bitmap.EndInit();
+                //        this.bitmapImageList.Add(bitmap);
+
+
+                //    });
+                //}
             }
         }
 
@@ -149,52 +202,91 @@ namespace WpfImageViewer
                case Key.K:
                     this.MoveNextPage();
                     break;
-               default:
+               case Key.J:
+                    this.MoveLastPage();
+                    break;
+                default:
                     break;
             }
         }
 
         private void MoveNextPage()
         {
-            int ImageCount = 0;
-            int moveCount = 0;
+            int displayCount = MainWindow.LayoutImageCountMap[this.currentLayoutType];
 
-            switch (this.currentLayoutType)
-            {
-                case LayoutType.L1x1:
-                    ImageCount = 1;
-                    moveCount = this.currentPage * 1;
-                    break;
-                case LayoutType.L2x2:
-                    ImageCount = 2;
-                    moveCount = this.currentPage * 4;
-                    break;
-                case LayoutType.L3x3:
-                    ImageCount = 3;
-                    moveCount = this.currentPage * 9;
-                    break;
-                default:
-                    break;
-            }
-
-            if (this.bitmapImageList.Count < moveCount)
+            if (this.pngImageList.Count < displayCount * this.currentPage)
             {
                 return;
-            } else
+            } 
+            else
             {
                 this.currentPage++;
             }
 
-            for (int i = 0; i < ImageCount * ImageCount; i++)
+            this.UpdateImageDisplay();
+            this.UpdatePageInfo();
+        }
+
+        private void MoveLastPage()
+        {
+            if (0 == this.currentPage)
             {
-                if (this.bitmapImageList.Count > moveCount + i)
+                return;
+            }
+            else
+            {
+                this.currentPage--;
+            }
+
+            this.UpdateImageDisplay();
+            this.UpdatePageInfo();
+        }
+
+        private void ClearPage()
+        {
+            this.currentPage = 0;
+            this.totalPage = ((this.pngImageList.Count() - 1) / MainWindow.LayoutImageCountMap[this.currentLayoutType]);
+            this.UpdatePageInfo();
+            this.UpdateImageDisplay();
+        }
+
+        private void UpdatePageInfo()
+        {
+            var pageText = string.Format("{0:D4}/{1:D4}", this.currentPage.ToString(), this.totalPage.ToString());
+            this.Label_Page.Content = pageText;
+        }
+
+        private void UpdateImageDisplay()
+        {
+            int displayCount = MainWindow.LayoutImageCountMap[this.currentLayoutType];
+
+            for (int i = 0; i < displayCount; i++)
+            {
+
+                if (this.pngImageList.Count > displayCount * this.currentPage + i)
                 {
-                    this.imageList[i].Source = this.bitmapImageList[moveCount + i];
+                    using (var stream = new MemoryStream(this.pngImageList[displayCount * this.currentPage + i]))
+                    {
+                        BitmapDecoder decoder = new PngBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                        this.imageList[i].Source = decoder.Frames[0];
+                    }
                 }
                 else
                 {
                     this.imageList[i].Source = null;
                 }
+
+                //if (this.bitmapImageList.Count > displayCount * this.currentPage + i)
+                //{
+                //    this.imageList[i].Source = this.bitmapImageList[displayCount * this.currentPage + i];
+                //}
+                //else
+                //{
+                //    this.imageList[i].Source = null;
+                //}
+
+
+
             }
         }
     }
